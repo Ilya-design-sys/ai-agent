@@ -1,14 +1,14 @@
 """Точка входа: консольный интерфейс взаимодействия с пользователем."""
 
 import sys
-from src.storage import HabitStorage
 from src.agent import HabitAgent
+from src.storage import HabitStorage
 
 
 def print_help() -> None:
     """Вывод справочной информации по доступным командам."""
     print("\nДоступные команды:")
-    print("  add <название> <дней> — добавить новую привычку и цель в днях")
+    print("  add <название> <дней> — добавить привычку и цель")
     print("  list                  — показать все привычки и текущий прогресс")
     print("  done <id>             — отметить привычку выполненной за сегодня")
     print("  help                  — вывести эту справку")
@@ -17,20 +17,16 @@ def print_help() -> None:
 
 def handle_add(agent: HabitAgent, args: list) -> None:
     if len(args) < 2:
-        print(
-              "Ошибка: укажите название "
-              "привычки и цель. Пример: add Чтение 21"
-        )
+        print("Ошибка: укажите название и цель. Пример: add Чтение 21")
         return
     try:
         target_days = int(args[-1])
         name = " ".join(args[:-1])
         habit = agent.create_habit(name, target_days)
-        msg = (
+        print(
             f"Привычка '{habit['name']}' успешно добавлена "
             f"с ID: {habit['id']} (цель: {habit['target_days']} дн.)."
         )
-        print(msg)
     except ValueError as err:
         print(f"Ошибка валидации данных: {err}")
 
@@ -42,32 +38,53 @@ def handle_list(agent: HabitAgent) -> None:
         return
     print("\nВаши текущие привычки:")
     for h in habits:
+        last_mark = (
+            h["last_completed_date"].isoformat()
+            if h["last_completed_date"] is not None
+            else "нет"
+        )
         line = (
             f"[{h['id']}] {h['name']} | "
             f"Выполнено: {h['completed_days']}/{h['target_days']} дн. | "
-            f"Серия (streak): {h['streak']} дн."
+            f"Серия (streak): {h['streak']} дн. | "
+            f"Последняя отметка: {last_mark}"
         )
         print(line)
     print()
 
 
 def handle_done(agent: HabitAgent, args: list) -> None:
-    if not args:
-        print("Ошибка: укажите ID привычки. Пример: done 1")
+    if len(args) != 1:
+        print(
+            "Ошибка: неверный формат команды done. "
+            "Ожидается ровно один аргумент: done <id>"
+        )
         return
     try:
         habit_id = int(args[0])
-        updated = agent.complete_habit(habit_id)
-        if updated is None:
-            print(f"Ошибка: привычка с ID {habit_id} не найдена.")
+        result = agent.complete_habit(habit_id)
+    except ValueError as err:
+        if args[0].lstrip("-").isdigit():
+            print(f"Ошибка валидации данных: {err}")
         else:
-            msg = (
-                f"Отлично! Привычка '{updated['name']}' выполнена. "
-                f"Текущая серия: {updated['streak']} дн."
-            )
-            print(msg)
-    except ValueError:
-        print("Ошибка: ID привычки должен быть целым числом.")
+            print("Ошибка: ID привычки должен быть целым числом.")
+        return
+
+    status = result["status"]
+    habit = result["habit"]
+
+    if status == "not_found":
+        print(f"Ошибка: привычка с ID {habit_id} не найдена.")
+    elif status == "already_completed_today":
+        print(
+            f"Привычка '{habit['name']}' уже отмечена выполненной за сегодня. "
+            f"Текущая серия: {habit['streak']} дн."
+        )
+    elif status == "completed":
+        print(
+            f"Отлично! Привычка '{habit['name']}' выполнена за сегодня. "
+            f"Текущая серия: {habit['streak']} дн."
+        )
 
 
 def main() -> None:
