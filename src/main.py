@@ -1,18 +1,19 @@
 """Точка входа: консольный интерфейс взаимодействия с пользователем."""
 
+import os
 import sys
 from src.agent import HabitAgent
-from src.storage import HabitStorage
+from src.storage import HabitStorage, StorageError
 
 
 def print_help() -> None:
     """Вывод справочной информации по доступным командам."""
     print("\nДоступные команды:")
     print("  add <название> <дней> — добавить привычку и цель")
-    print("  list                  — показать все привычки и текущий прогресс")
-    print("  done <id>             — отметить привычку выполненной за сегодня")
+    print("  list                  — показать все привычки и прогресс")
+    print("  done <id>             — отметить привычку за сегодня")
     print("  help                  — вывести эту справку")
-    print("  exit                  — штатно завершить работу приложения\n")
+    print("  exit                  — штатно завершить работу\n")
 
 
 def handle_add(agent: HabitAgent, args: list) -> None:
@@ -27,8 +28,8 @@ def handle_add(agent: HabitAgent, args: list) -> None:
             f"Привычка '{habit['name']}' успешно добавлена "
             f"с ID: {habit['id']} (цель: {habit['target_days']} дн.)."
         )
-    except ValueError as err:
-        print(f"Ошибка валидации данных: {err}")
+    except (ValueError, StorageError) as err:
+        print(f"Ошибка: {err}")
 
 
 def handle_list(agent: HabitAgent) -> None:
@@ -69,6 +70,9 @@ def handle_done(agent: HabitAgent, args: list) -> None:
         else:
             print("Ошибка: ID привычки должен быть целым числом.")
         return
+    except StorageError as err:
+        print(f"Ошибка хранилища: {err}")
+        return
 
     status = result["status"]
     habit = result["habit"]
@@ -77,7 +81,7 @@ def handle_done(agent: HabitAgent, args: list) -> None:
         print(f"Ошибка: привычка с ID {habit_id} не найдена.")
     elif status == "already_completed_today":
         print(
-            f"Привычка '{habit['name']}' уже отмечена выполненной за сегодня. "
+            f"Привычка '{habit['name']}' уже отмечена за сегодня. "
             f"Текущая серия: {habit['streak']} дн."
         )
     elif status == "completed":
@@ -88,11 +92,21 @@ def handle_done(agent: HabitAgent, args: list) -> None:
 
 
 def main() -> None:
-    storage = HabitStorage()
+    storage_path = os.getenv("HABIT_STORAGE_PATH", "data/habits.json")
+    try:
+        storage = HabitStorage(file_path=storage_path)
+    except StorageError as err:
+        print(f"Ошибка загрузки состояния: {err}")
+        print("Приложение продолжит работу с пустым состоянием.")
+        storage = HabitStorage.__new__(HabitStorage)
+        storage.file_path = storage_path
+        storage._habits = {}
+        storage._next_id = 1
+
     agent = HabitAgent(storage)
 
     print("=== ИИ-Агент: Помощник по привычкам запущен ===")
-    print("Введите 'help' для просмотра списка команд или 'exit' для выхода.")
+    print("Введите 'help' для списка команд или 'exit' для выхода.")
 
     while True:
         try:
